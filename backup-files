@@ -1,0 +1,148 @@
+#!/bin/bash
+#
+# Backup files and documents
+#
+# This source file is part of the follwoing repository:
+# http://www.github.com/microfarad-de/nastia-server
+#
+# Please visit:
+#   http://www.microfarad.de
+#   http://www.github.com/microfarad-de
+#
+# Copyright (C) 2019 Karim Hraibi (khraibi@gmail.com)
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+
+# Path to the current directory where this script is located
+DIR=$(dirname $BASH_SOURCE)
+
+# Include common configuration file
+source "$DIR/lib/common.sh"
+
+# Configuration variables
+LOG_PREFIX="backup-files"
+LOG="$CFG_LOG_DIR/$LOG_PREFIX.log"
+LOCK="$CFG_TMPFS_DIR/backup-files.lock"
+RSYNC_CMD="rsync -av --delete"
+MAX_DELETIONS="$CFG_BACKUP_FILES_MAX_DELETIONS"
+
+# Redirect stdout ( > ) into a named pipe ( >() ) running "tee"
+exec > >(tee -i -a "$LOG")
+exec 2>&1
+
+
+
+# Info log messages
+function infoLog {
+  _infoLog "$1" "$LOG_PREFIX" "" ""
+}
+
+# Warning log messages
+function warningLog {
+  _warningLog "$1" "$LOG_PREFIX" "" "e"
+}
+
+# Error log messages
+function errorLog {
+  _errorLog "$1" "$LOG_PREFIX" "" "e"
+}
+
+
+
+
+#################
+####  START  ####
+#################
+
+semaphoreLock "$LOCK"
+if [[ $? -ne 0 ]]; then
+  warningLog "an instance of the current script is already running (please remove $LOCK)"
+  exit 1
+fi
+
+result=0
+
+echo " "
+echo " "
+echo "##############################################"
+echo " BACKUP STARTED:" $(date)
+echo "##############################################"
+echo " "
+echo " "
+
+for i in "${!CFG_BACKUP_FILES_SOURCE[@]}"; do
+  source="${CFG_BACKUP_FILES_SOURCE[$i]}/"
+  exclude=(${CFG_BACKUP_FILES_EXCLUDE[$i]})
+  options=(${CFG_BACKUP_FILES_OPTIONS[$i]})
+  destination="${CFG_BACKUP_FILES_DESTINATION[$i]}/"
+  rv=0
+
+  opt="${options[@]}"
+  for x in "${exclude[@]}"; do
+      opt="$opt --exclude=$x"
+  done
+
+  echo "############################"
+  date
+  echo "Source:      $source"
+  echo "Destination: $destination"
+  echo "Exclude:     ${exclude[@]}"
+  echo "Options:     ${options[@]}"
+  echo "############################"
+  echo " "
+
+
+  if [[ $source == "/" ]]; then
+    errorLog "invalid source folder ($source)"
+    rv=101
+  fi
+  if [[ $destination == "/" ]]; then
+    errorLog "invalid destination folder ($destination)"
+    rv=102
+  fi
+
+  if [[ rv -eq 0 ]]; then
+    delCount=$($RSYNC_CMD --dry-run $opt "$source" "$destination" | grep deleting | wc -l)
+    delCount=$(sed 's/^[[:space:]]*//' <<< $delCount)
+    if [[ $delCount -gt $MAX_DELETIONS ]]; then
+      warningLog "$source --> $destination (too many deletions $delCount)"
+    fi
+  fi
+
+  if [[ rv -eq 0 ]]; then
+    $RSYNC_CMD $opt "$source" "$destination"
+    rv=$?
+    if [[ rv -ne 0 ]]; then
+      echo ""
+      if [[ $rv -eq 24 ]]; then
+        warningLog "$source --> $destination (partial transfer due to vanished source files $rv)"
+      else
+        errorLog "$source --> $destination ($rv)"
+      fi
+    fi
+  fi
+
+  if [[ $rv -eq 0 ]]; then
+    infoLog "backup: $source --> $destination"
+  else
+    result=$rv
+  fi
+  echo " "
+  echo " "
+done
+
+semaphoreRelease "$LOCK"
+
+exit $result

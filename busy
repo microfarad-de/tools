@@ -1,0 +1,32 @@
+#!/bin/bash
+# Generate CPU load
+
+function usage {
+    echo "Usage: $0 <0 .. num_cpus>"
+    exit 1
+}
+
+if [[ "$#" -ne 1 ]]; then
+    usage
+fi
+
+num_cpus=$1
+
+if ! [[ $num_cpus =~ ^[0-9]+$ ]] ; then
+    usage
+fi
+
+if [[ $num_cpus -eq 0 ]]; then
+    echo "Stopping on all CPUs..."
+else
+    echo "Starting on $num_cpus CPUs..."
+fi
+
+killall yes > /dev/null 2>&1
+
+for (( i=1; i<=$num_cpus; i++ )); do
+    yes > /dev/null &
+    echo "CPU $i started"
+done
+
+exit 0

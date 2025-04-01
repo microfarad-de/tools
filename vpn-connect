@@ -1,0 +1,15 @@
+#!/bin/bash
+# KHr
+# Establish a VPN connection
+
+
+# Path to the current directory where this script is located
+DIR=$(dirname $BASH_SOURCE)
+
+# Include common configuration file
+source "$DIR/lib/common.sh"
+
+
+/usr/sbin/networksetup -connectpppoeservice "$CFG_VPN_NAME"
+
+

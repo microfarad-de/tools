@@ -1,0 +1,13 @@
+#!/bin/bash
+# KHr
+# Create a periodic backup copy of the bash shell history
+#
+
+SRC=$HOME/.bash_history
+DST=$HOME/.bash_history.bak
+
+size1=$(wc -c < $SRC)
+size2=$(wc -c < $DST)
+if [[ -z $size2 || $size1 > $size2 ]]; then
+  cp -f $SRC $DST
+fi
